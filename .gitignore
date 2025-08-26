@@ -1,0 +1,25 @@
+# 🖥️ Operating System files
+.DS_Store
+Thumbs.db
+
+# 🛠️ Development environment
+.vscode/
+.idea/
+prepros-6.config
+
+# ⚙️ PHP environment
+*.log
+.env
+config.php
+
+# 🧰 Composer dependencies
+/vendor/
+
+# 📦 Node.js dependencies
+/node_modules/
+
+# 🗂️ Cache and database dumps
+*.cache
+*.sql
+
+
