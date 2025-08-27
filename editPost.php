@@ -19,41 +19,60 @@
   </div>
 <?php 
 require_once 'inc/conn.php';
+require_once 'inc/security.php';
 
 if(!isset($_SESSION['user_id'])):
-header(header: "location:Login.php");
+    header("location:Login.php");
+    exit;
 endif;
 
-if(isset($_GET['id']))
-{
-  $id = $_GET['id'];
-  $query = "select title , body , image from posts where id=$id";
-  $result = mysqli_query($conn , $query);
-  if(mysqli_num_rows($result)==1){
-    $post = mysqli_fetch_assoc($result);
-  }else{
-      header("location:404.php");
-  }
-}else{
-  header("location:404.php");
-}
+if(isset($_GET['id'])):
+    $id = (int)$_GET['id']; // Cast to integer for safety
+    
+    // Check if user owns the post
+    if(!userOwnsPost($conn, $id, $_SESSION['user_id'])):
+        $_SESSION['errors'] = ["You are not authorized to edit this post"];
+        header("location:index.php");
+        exit;
+    endif;
+    
+    // Use prepared statement to prevent SQL injection
+    $stmt = $conn->prepare("SELECT title, body, image FROM posts WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if($result->num_rows === 1):
+        $post = $result->fetch_assoc();
+    else:
+        header("location:404.php");
+        exit;
+    endif;
+else:
+    header("location:404.php");
+    exit;
+endif;
 ?>
 <?php require_once 'inc/errors.php'  ?>
     <form method="POST" action="handle/update.php?id=<?php echo $id  ?>" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
         <div class="mb-3">
             <label for="title" class="form-label">Title</label>
-            <input type="text" class="form-control" id="title" name="title" value="<?php echo $post['title'] ?>">
+            <input type="text" class="form-control" id="title" name="title" value="<?php echo htmlspecialchars($post['title'], ENT_QUOTES, 'UTF-8') ?>">
         </div>
         <div class="mb-3">
             <label for="body" class="form-label">Body</label>
-            <textarea class="form-control" id="body" name="body" rows="5"><?php echo $post['body'] ?></textarea>
+            <textarea class="form-control" id="body" name="body" rows="5"><?php echo htmlspecialchars($post['body'], ENT_QUOTES, 'UTF-8') ?></textarea>
         </div>
         <div class="mb-3">
-            <label for="body" class="form-label">image</label>
-            <input type="file" class="form-control-file" id="image" name="image" >
+            <label for="image" class="form-label">Image (optional - leave empty to keep current)</label>
+            <input type="file" class="form-control-file" id="image" name="image" accept="image/*">
         </div>
-        <img src="uploads/<?php echo $post['image'] ?>" alt="" width="100px" srcset="">
-        <button type="submit" class="btn btn-primary" name="submit">Submit</button>
+        <div class="mb-3">
+            <label>Current Image:</label><br>
+            <img src="uploads/<?php echo htmlspecialchars($post['image'], ENT_QUOTES, 'UTF-8') ?>" alt="" width="100px">
+        </div>
+        <button type="submit" class="btn btn-primary" name="submit">Update Post</button>
     </form>
 </div>
 

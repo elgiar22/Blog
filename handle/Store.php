@@ -1,80 +1,98 @@
 <?php
 require_once "../inc/conn.php";
-session_start();
+require_once "../inc/security.php";
 
-//form , catch , filter
+// Check if user is logged in
+if(!isset($_SESSION['user_id'])){
+    header("location:../Login.php");
+    exit;
+}
+
 if(isset($_POST['submit'])){
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token'])) {
+        logSecurityEvent("CSRF token mismatch", "Post creation attempt");
+        $_SESSION['errors'] = ["Security token mismatch. Please try again."];
+        header("location:../addPost.php");
+        exit;
+    }
 
-$title = trim(htmlspecialchars($_POST['title']));
-$body = trim(htmlspecialchars($_POST['body']));
-//validation
-$errors = [];
+    // Sanitize input
+    $title = sanitizeInput($_POST['title']);
+    $body = sanitizeInput($_POST['body']);
 
-//title
-if(empty($title)){
-    $errors[] = "title is required";
-}elseif(is_numeric($title)){
-    $errors[] = "title must be string";
-}
+    $errors = [];
+    
+    // Enhanced validation
+    if(empty($title)){
+        $errors[] = "Title is required";
+    } elseif(strlen($title) < 3 || strlen($title) > 255){
+        $errors[] = "Title must be between 3 and 255 characters";
+    }
 
-//body
-if(empty($body)){
-    $errors[] = "body is required";
-}elseif(is_numeric($body)){
-    $errors[] = "body must be string";
-}
+    if(empty($body)){
+        $errors[] = "Body is required";
+    } elseif(strlen($body) < 10){
+        $errors[] = "Body must be at least 10 characters long";
+    }
 
+    // Image validation
+    if(!isset($_FILES['image']) || $_FILES['image']['error'] === UPLOAD_ERR_NO_FILE){
+        $errors[] = "Image is required";
+    } else {
+        $imageErrors = validateFileUpload($_FILES['image']);
+        if(!empty($imageErrors)){
+            $errors = array_merge($errors, $imageErrors);
+        }
+    }
 
-//image validation
-
-$image = $_FILES['image'];
-$image_name = $image['name'];
-$image_error = $image['error'];
-$image_tmpname = $image['tmp_name'];
-$image_size_MB= $image['size']/(1024*1024);
-$image_ext = strtolower(pathinfo($image_name , PATHINFO_EXTENSION));
-$newName = uniqid().".$image_ext";
-$ext =["png" , "jpg" , "jpeg"];
-if($image_error != 0){
-    $errors[] = "image not correct";
-}elseif($image_size_MB > 1)
-{
-    $errors[] = "image large size";
-}elseif(!in_array($image_ext,$ext)){
-    $errors[] = "choose correct image";
-}
-
-// end validation ------------------------------------------------------------------------
-
-//errors -> store in session -> redirect form
-if(empty($errors)){
-
-//insert -> move image
-
-$query = "INSERT INTO posts(`title`, `body`, `image`, `user_id`) VALUES('$title', '$body', '$newName', 1)";
-$result = mysqli_query($conn , $query);
-if($result){
-    //move
-    move_uploaded_file($image_tmpname , "../uploads/$newName");
-    //session success
-    $_SESSION['success'] = ["post inserted successfuly"];
-    //head index
-    header("location:../index.php");
-
-}else{
-    $_SESSION['errors'] = ["error while insert"];
+    if(empty($errors)){
+        try {
+            // Generate secure filename
+            $newFileName = generateSecureFilename($_FILES['image']['name']);
+            $uploadPath = "../uploads/" . $newFileName;
+            
+            // Move uploaded file
+            if(move_uploaded_file($_FILES['image']['tmp_name'], $uploadPath)){
+                // Insert post with prepared statement
+                $stmt = $conn->prepare("INSERT INTO posts(title, body, image, user_id) VALUES(?, ?, ?, ?)");
+                $stmt->bind_param("sssi", $title, $body, $newFileName, $_SESSION['user_id']);
+                
+                if($stmt->execute()){
+                    logSecurityEvent("Post created successfully", "User ID: " . $_SESSION['user_id']);
+                    $_SESSION['success'] = ["Post created successfully!"];
+                    header("location:../index.php");
+                    exit;
+                } else {
+                    // Delete uploaded file if database insert fails
+                    if(file_exists($uploadPath)){
+                        unlink($uploadPath);
+                    }
+                    throw new Exception("Database insert failed");
+                }
+            } else {
+                throw new Exception("File upload failed");
+            }
+            
+        } catch (Exception $e) {
+            logSecurityEvent("Post creation error", $e->getMessage());
+            $_SESSION['errors'] = ["Failed to create post. Please try again."];
+            header("location:../addPost.php");
+            exit;
+        } finally {
+            if(isset($stmt)){
+                $stmt->close();
+            }
+        }
+    } else {
+        // Store form data for redisplay
+        $_SESSION['title'] = $title;
+        $_SESSION['body'] = $body;
+        $_SESSION['errors'] = $errors;
+        header("location:../addPost.php");
+        exit;
+    }
+} else {
     header("location:../addPost.php");
-}
-
-//message , header
-}else{
-    $_SESSION['title'] = $title;
-    $_SESSION['body'] = $body;
-    $_SESSION['errors'] = $errors;
-    header("location:../addPost.php");
-}
-
-}
-else{
-    header("location:../addPost.php");
+    exit;
 }

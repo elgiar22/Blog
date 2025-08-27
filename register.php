@@ -121,17 +121,19 @@
     <div>
     <?php
     require_once 'inc/errors.php';
+    require_once 'inc/security.php';
     ?>
 
         <form class="form" action="handle/registerA.php" method="post">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             
             <h3>Register Here</h3>
-            <input placeholder="Enter Name" class="input" type="text" name="name" id=""value="<?php if(isset($_SESSION['name'])) echo $_SESSION['name']  ?>">
-            <input placeholder="Enter Email" class="input" type="email" name="email" id=""value="<?php if(isset($_SESSION['email'])) echo $_SESSION['email']  ?>">
-            <input class="input" placeholder="Enter Password" type="password" name="password" id="">
-            <input class="input" placeholder="Enter your phone " type="text" name="phone" id="" value="<?php if(isset($_SESSION['phone'])) echo $_SESSION['phone']  ?>">
+            <input placeholder="Enter Name" class="input" type="text" name="name" id="" value="<?php if(isset($_SESSION['name'])) echo htmlspecialchars($_SESSION['name'], ENT_QUOTES, 'UTF-8')  ?>" required>
+            <input placeholder="Enter Email" class="input" type="email" name="email" id="" value="<?php if(isset($_SESSION['email'])) echo htmlspecialchars($_SESSION['email'], ENT_QUOTES, 'UTF-8')  ?>" required>
+            <input class="input" placeholder="Enter Password" type="password" name="password" id="" required minlength="6">
+            <input class="input" placeholder="Enter your phone " type="tel" name="phone" id="" value="<?php if(isset($_SESSION['phone'])) echo htmlspecialchars($_SESSION['phone'], ENT_QUOTES, 'UTF-8')  ?>" required pattern="[0-9]{10,15}">
             <button type="submit" name="submit">Register</button>
-            <a href="handle/loginA.php">login</a>
+            <a href="Login.php">login</a>
 
         </form>
     </div>

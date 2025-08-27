@@ -1,73 +1,103 @@
 <?php
-
 require_once '../inc/conn.php';
-session_start();
+require_once '../inc/security.php';
 
+// Redirect if already logged in
 if(isset($_SESSION['user_id'])){
     header("location:../index.php");
     exit;
 }
-if(isset($_POST['submit'])){
 
-    $name = trim(htmlspecialchars($_POST['name']));
-    $email = trim(htmlspecialchars($_POST['email']));
-    $password = trim(htmlspecialchars($_POST['password']));
-    $phone = trim(htmlspecialchars($_POST['phone']));
+if(isset($_POST['submit'])){
+    // Verify CSRF token
+    if (!isset($_POST['csrf_token']) || !verifyCSRFToken($_POST['csrf_token'])) {
+        logSecurityEvent("CSRF token mismatch", "Registration attempt");
+        $_SESSION['errors'] = ["Security token mismatch. Please try again."];
+        header("location:../register.php");
+        exit;
+    }
+
+    // Sanitize input
+    $name = sanitizeInput($_POST['name']);
+    $email = sanitizeInput($_POST['email']);
+    $password = $_POST['password']; // Don't sanitize password
+    $phone = sanitizeInput($_POST['phone']);
 
     $errors = [];
-    // validation
+    
+    // Enhanced validation
     if(empty($name)){
-        $errors[] = "name is requried";
-    }   elseif(is_numeric($name)){
-        $errors[] = "name must be string";
+        $errors[] = "Name is required";
+    } elseif(!validateName($name)){
+        $errors[] = "Name must contain only letters and spaces (2-50 characters)";
     }
 
     if(empty($email)){
-        $errors[] = "email is requried";
-    }   elseif(! filter_var($email , FILTER_VALIDATE_EMAIL)){
-        $errors[] = "email not correct";
+        $errors[] = "Email is required";
+    } elseif(!validateEmail($email)){
+        $errors[] = "Please enter a valid email address";
     }
 
     if(empty($password)){
-        $errors[] = "password is requried";
-    }   elseif(strlen($password)<6){
-        $errors[] = "password less than 6";
+        $errors[] = "Password is required";
+    } elseif(!validatePassword($password)){
+        $errors[] = "Password must be between 6 and 128 characters";
     }
 
     if(empty($phone)){
-        $errors[] = "phone is requried";
-    }   elseif(! is_numeric($phone)){
-        $errors[] = "phone must be number";
+        $errors[] = "Phone number is required";
+    } elseif(!validatePhone($phone)){
+        $errors[] = "Phone number must contain only numbers (10-15 digits)";
     }
 
     if(empty($errors)){
-        // hash 
-        $password = password_hash($password , PASSWORD_DEFAULT);
-
-
-         $query = "insert into users(`name`,`email`,`password`,`phone`) values('$name','$email','$password','$phone')";
-        $result = mysqli_query($conn , $query);
-        if($result){
-            //login
-            $_SESSION['success'] = ["you register successfuly"];
-            header("location:../login.php");
-
-        }else{
-        $_SESSION["errors"] = ["error while register"];
-        header("location:../register.php");
+        try {
+            // Hash password
+            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+            
+            // Check if email already exists
+            $stmt = $conn->prepare("SELECT id FROM users WHERE email = ?");
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if($result->num_rows > 0){
+                $_SESSION["errors"] = ["Email already exists"];
+                header("location:../register.php");
+                exit;
+            }
+            
+            // Insert new user
+            $stmt = $conn->prepare("INSERT INTO users (name, email, password, phone) VALUES (?, ?, ?, ?)");
+            $stmt->bind_param("ssss", $name, $email, $hashedPassword, $phone);
+            
+            if($stmt->execute()){
+                logSecurityEvent("User registration successful", "Email: " . $email);
+                $_SESSION['success'] = ["Registration successful! Please login."];
+                header("location:../Login.php");
+                exit;
+            } else {
+                throw new Exception("Database insert failed");
+            }
+            
+        } catch (Exception $e) {
+            logSecurityEvent("Registration error", $e->getMessage());
+            $_SESSION["errors"] = ["Registration failed. Please try again."];
+            header("location:../register.php");
+            exit;
+        } finally {
+            $stmt->close();
         }
-
-
-
-    }else{
+    } else {
+        // Store form data for redisplay (except password)
         $_SESSION['name'] = $name;
         $_SESSION['email'] = $email;
         $_SESSION['phone'] = $phone;
         $_SESSION['errors'] = $errors;
         header("location:../register.php");
+        exit;
     }
-
-
-}else{
+} else {
     header("location:../register.php");
+    exit;
 }

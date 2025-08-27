@@ -114,20 +114,21 @@
     session_start();
     require_once 'inc/success.php';
     require_once 'inc/errors.php';
+    require_once 'inc/security.php';
 ?>
 
         <form class="form" action="handle/loginA.php" method="post">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
             
             <h3>Login Here</h3>
-            <input placeholder="Enter Email" class="input" type="" name="email" id=""value="<?php if(isset($_SESSION['email'])) echo $_SESSION['email']; unset($_SESSION['email'])?>">
-            <input class="input" placeholder="Enter Password" type="password" name="password" id="">
+            <input placeholder="Enter Email" class="input" type="email" name="email" id="" value="<?php if(isset($_SESSION['email'])) echo htmlspecialchars($_SESSION['email'], ENT_QUOTES, 'UTF-8'); unset($_SESSION['email'])?>" required>
+            <input class="input" placeholder="Enter Password" type="password" name="password" id="" required>
             <button type="submit" name="submit">Login</button>
         
         <div class="links">
-            <a href="handle/registerA.php">Register</a>
+            <a href="register.php">Register</a>
         </div>
            
-            
 
         </form>
     </div>
